@@ -12,7 +12,7 @@ try:
 except ImportError:
     # Langchain >= 1.0.0
     from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
-    
+
 from langchain_core.runnables import RunnableConfig, ensure_config
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
@@ -649,6 +649,11 @@ class LangGraphAgent:
             should_emit_messages = event.get("metadata", {}).get("emit-messages", True)
             should_emit_tool_calls = event.get("metadata", {}).get("emit-tool-calls", True)
 
+            # Convert FINISH_REASON_UNSPECIFIED to None (Vertex AI compatibility)
+            if event["data"]["chunk"].response_metadata.get('finish_reason', None) == 'FINISH_REASON_UNSPECIFIED':
+                event["data"]["chunk"].response_metadata['finish_reason'] = None
+
+            # Skip chunks with any other finish_reason (like STOP)
             if event["data"]["chunk"].response_metadata.get('finish_reason', None):
                 return
 
@@ -863,7 +868,7 @@ class LangGraphAgent:
                 yield self._dispatch_event(
                     StateSnapshotEvent(type=EventType.STATE_SNAPSHOT, snapshot=self.get_state_snapshot(self.active_run["manually_emitted_state"]), raw_event=event)
                 )
-            
+
             yield self._dispatch_event(
                 CustomEvent(type=EventType.CUSTOM, name=event["name"], value=event["data"], raw_event=event)
             )
@@ -1000,7 +1005,7 @@ class LangGraphAgent:
                 ReasoningMessageStartEvent(
                     type=EventType.REASONING_MESSAGE_START,
                     message_id=self.active_run["reasoning_process"]["message_id"],
-                    role="assistant",
+                    role="reasoning",
                 )
             )
             self.active_run["reasoning_process"]["type"] = reasoning_data["type"]
