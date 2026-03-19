@@ -22,10 +22,11 @@ dependencies = [
     "ag-ui-protocol",
     "python-dotenv>=1.0.0",
     "fastapi>=0.115.12",
+    "langchain-google-vertexai>=3.2.2",
 ]
 
 [tool.uv.sources]
-ag-ui-langgraph = { path = "../" }
+ag-ui-langgraph = { path = "../", editable = true }
 ag-ui-protocol = { path = "../../../../sdks/python" }
 
 [project.scripts]

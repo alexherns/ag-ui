@@ -1,36 +1,42 @@
 """
-A simple agentic chat flow using LangGraph instead of CrewAI.
+A simple agentic chat flow using LangGraph with proper streaming and reasoning.
 """
 
 import os
+from typing import Any, Dict, AsyncIterator
 
-from langchain.agents import create_agent
-from langchain_core.tools import tool
-from copilotkit import CopilotKitMiddleware, CopilotKitState
+from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_google_vertexai import ChatVertexAI
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, MessagesState, StateGraph
+from langgraph.types import Command
 
-# Conditionally use a checkpointer based on the environment
-# Check for multiple indicators that we're running in LangGraph dev/API mode
-is_fast_api = os.environ.get("LANGGRAPH_FAST_API", "false").lower() == "true"
-
-# Compile the graph
-if is_fast_api:
-    # For CopilotKit and other contexts, use MemorySaver
-    from langgraph.checkpoint.memory import MemorySaver
-    memory = MemorySaver()
-    graph = create_agent(
-        model="openai:gpt-4.1-mini",
-        tools=[],  # Backend tools go here
-        middleware=[CopilotKitMiddleware()],
-        system_prompt="You are a helpful assistant.",
-        checkpointer=memory,
-        state_schema=CopilotKitState
+async def chat_node(state: Dict[str, Any], config: RunnableConfig):
+    model = ChatVertexAI(
+        model="gemini-2.5-flash",
+        project=os.getenv("GCP_PROJECT"),
+        location=os.getenv("GCP_REGION", "us-central1"),
+        streaming=True,
+        include_thoughts=True,
     )
-else:
-    # When running in LangGraph API/dev, don't use a custom checkpointer
-    graph = create_agent(
-        model="openai:gpt-4.1-mini",
-        tools=[],  # Backend tools go here
-        middleware=[CopilotKitMiddleware()],
-        system_prompt="You are a helpful assistant.",
-        state_schema=CopilotKitState
+    # Run the model with streaming enabled (astream_events handles this)
+    response = await model.ainvoke(
+        [SystemMessage(content="You are a helpful assistant."), *state["messages"]],
+        config,
     )
+
+    # Update messages with the response
+    messages = state["messages"] + [response]
+
+    return Command(goto=END, update={"messages": messages})
+
+
+# Define the graph
+workflow = StateGraph(MessagesState)
+workflow.add_node("chat_node", chat_node)
+workflow.set_entry_point("chat_node")
+workflow.add_edge("chat_node", END)
+
+memory = MemorySaver()
+graph = workflow.compile(checkpointer=memory)

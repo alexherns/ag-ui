@@ -4,8 +4,8 @@ An example demonstrating tool-based generative UI using LangGraph.
 
 import os
 from typing import Any, List
+from langchain_google_vertexai import ChatVertexAI
 from typing_extensions import Literal
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
@@ -32,7 +32,13 @@ async def chat_node(state: AgentState, config: RunnableConfig) -> Command[Litera
     https://www.perplexity.ai/search/react-agents-NcXLQhreS0WDzpVaS4m9Cg
     """
 
-    model = ChatOpenAI(model="gpt-4.1-mini")
+    model = ChatVertexAI(
+        model="gemini-2.5-flash",
+        project=os.getenv("GCP_PROJECT"),
+        location=os.getenv("GCP_REGION", "us-central1"),
+        streaming=True,
+        include_thoughts=True,
+    )
 
     model_with_tools = model.bind_tools(
         [
@@ -42,7 +48,7 @@ async def chat_node(state: AgentState, config: RunnableConfig) -> Command[Litera
     )
 
     system_message = SystemMessage(
-        content=f"Help the user with writing Haikus. If the user asks for a haiku, use the generate_haiku tool to display the haiku to the user."
+        content=f"Help the user with writing Haikus. Confirm before proceeding"
     )
 
     response = await model_with_tools.ainvoke([
